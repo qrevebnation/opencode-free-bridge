@@ -73,7 +73,10 @@ echo "Unit file ditulis: $UNIT_FILE"
 echo "Runtime: $RUNTIME"
 
 systemctl --user daemon-reload
-systemctl --user enable --now "$UNIT_NAME"
+systemctl --user enable "$UNIT_NAME" >/dev/null 2>&1 || true
+# Restart wajib: service yang sudah jalan tidak membaca unit baru hanya dengan
+# enable --now, sehingga env lama (mis. OPENCODE_* ke relay shim) masih terpakai.
+systemctl --user restart "$UNIT_NAME"
 
 echo "Menunggu bridge aktif..."
 for _ in $(seq 1 20); do
