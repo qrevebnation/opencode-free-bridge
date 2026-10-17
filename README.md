@@ -1,5 +1,11 @@
 # opencode-free-bridge
 
+> **Fork:** [`qrevebnation/opencode-free-bridge`](https://github.com/qrevebnation/opencode-free-bridge) —
+> mengikuti upstream, dengan tambahan otomasi: registrasi custom provider 9Router
+> (prefix `zen`), pembersih proxy pool yang menyebabkan `FUNCTION_INVOCATION_FAILED`,
+> dan rotasi relay opsional untuk menyebar limit per-IP.
+> Panduan: [SETUP.md](./SETUP.md) · catatan teknis: [DETAIL.md](./DETAIL.md).
+
 OpenAI-compatible local API bridge for [OpenCode](https://opencode.ai) free-tier models. No account and no API key required.
 
 It runs a local server on `http://127.0.0.1:20129/v1` that any OpenAI-compatible client (9Router, Cursor, Continue, LiteLLM, Open WebUI, or the OpenAI SDK) can call directly.
