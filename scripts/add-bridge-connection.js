@@ -72,14 +72,27 @@ async function main() {
   if (!BRIDGE_URL) throw new Error("--url wajib (mis. http://127.0.0.1:20130/v1)");
   if (!CONNECTION_NAME) throw new Error("--name wajib (mis. vps-1)");
 
-  const created = await api.createApiKeyProvider({
-    provider: node.id,
-    name: CONNECTION_NAME,
-    apiKey: API_KEY,
-  });
-  if (!created?.success) throw new Error(`Gagal membuat connection: ${created?.error || JSON.stringify(created)}`);
+  // Idempoten: kalau connection dengan nama ini sudah ada pada provider yang sama,
+  // pakai ulang lalu perbarui (baseUrl/priority) alih-alih gagal.
+  const existingList = await api.getProviders();
+  const existing = (existingList?.data?.connections || []).find(
+    (c) => c.provider === node.id && c.name === CONNECTION_NAME
+  );
 
-  const conn = created.data.connection;
+  let conn;
+  if (existing) {
+    conn = existing;
+    console.log(`Connection "${CONNECTION_NAME}" sudah ada — diperbarui.`);
+  } else {
+    const created = await api.createApiKeyProvider({
+      provider: node.id,
+      name: CONNECTION_NAME,
+      apiKey: API_KEY,
+    });
+    if (!created?.success) throw new Error(`Gagal membuat connection: ${created?.error || JSON.stringify(created)}`);
+    conn = created.data.connection;
+  }
+
   const patch = {
     providerSpecificData: {
       prefix: PREFIX,
@@ -99,7 +112,7 @@ async function main() {
   if (!updated?.success) throw new Error(`Gagal set baseUrl: ${updated?.error || JSON.stringify(updated)}`);
 
   console.log(
-    `Connection dibuat: ${CONNECTION_NAME} (${conn.id}) -> ${BRIDGE_URL}${PRIORITY ? ` | priority ${PRIORITY}` : ""}`
+    `Connection ${existing ? "diperbarui" : "dibuat"}: ${CONNECTION_NAME} (${conn.id}) -> ${BRIDGE_URL}${PRIORITY ? ` | priority ${PRIORITY}` : ""}`
   );
 
   const providers = await api.getProviders();

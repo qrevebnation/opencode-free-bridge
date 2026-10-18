@@ -19,6 +19,8 @@ UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT_FILE="$UNIT_DIR/$UNIT_NAME"
 PORT="${PORT:-20129}"
 HOST="${HOST:-127.0.0.1}"
+# 403 gate -> 429 supaya gateway (9Router) memakai backoff rate-limit
+IP_LIMIT_STATUS="${IP_LIMIT_STATUS:-429}"
 
 if [[ ! -d "$BRIDGE_DIR" ]]; then
   echo "Direktori bridge tidak ditemukan: $BRIDGE_DIR" >&2
@@ -60,6 +62,7 @@ Type=simple
 WorkingDirectory=$BRIDGE_DIR
 Environment=PORT=$PORT
 Environment=HOST=$HOST
+Environment=IP_LIMIT_STATUS=$IP_LIMIT_STATUS
 ExecStart=$RUNTIME $BRIDGE_DIR/server.js
 Restart=always
 RestartSec=3

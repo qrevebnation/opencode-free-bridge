@@ -30,6 +30,7 @@ PROXY_URL="${PROXY_URL:-}"   # pakai proxy yang sudah ada (mis. http://127.0.0.1
 SHIM_PORT="${SHIM_PORT:-}"   # rute lewat relay shim (relay 9Router)
 PRIORITY="${PRIORITY:-}"     # priority connection di 9Router (angka kecil = didahulukan)
 BRIDGE_ONLY="${BRIDGE_ONLY:-}"
+IP_LIMIT_STATUS="${IP_LIMIT_STATUS:-429}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 NINE_ROUTER_DB="${NINE_ROUTER_DB:-$HOME/.9router/db/data.sqlite}"
 DELETE=""
@@ -112,6 +113,7 @@ BRIDGE_PORT="${BRIDGE_PORT:-$(next_free_port 20131)}"
   echo "WorkingDirectory=$BRIDGE_DIR"
   echo "Environment=PORT=$BRIDGE_PORT"
   echo "Environment=HOST=$BRIDGE_HOST"
+  echo "Environment=IP_LIMIT_STATUS=$IP_LIMIT_STATUS"
   if [[ -n "$SHIM_PORT" ]]; then
     echo "Environment=OPENCODE_CHAT_URL=http://127.0.0.1:$SHIM_PORT/inference/v1/chat/completions"
     echo "Environment=OPENCODE_RESPONSES_URL=http://127.0.0.1:$SHIM_PORT/inference/v1/responses"

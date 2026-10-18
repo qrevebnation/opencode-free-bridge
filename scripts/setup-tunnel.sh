@@ -29,6 +29,7 @@ PROXY_PORT="${PROXY_PORT:-1085}"
 BRIDGE_DIR="${BRIDGE_DIR:-$HOME/.opencode-free-bridge}"
 PORT="${PORT:-20129}"
 HOST="${HOST:-127.0.0.1}"
+IP_LIMIT_STATUS="${IP_LIMIT_STATUS:-429}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 STATE_DIR="$HOME/.local/state/opencode-free-bridge"
 
@@ -99,6 +100,7 @@ WorkingDirectory=$BRIDGE_DIR
 Environment=PORT=$PORT
 Environment=HOST=$HOST
 Environment=HTTPS_PROXY=http://127.0.0.1:$PROXY_PORT
+Environment=IP_LIMIT_STATUS=$IP_LIMIT_STATUS
 ExecStart=$RUNTIME $BRIDGE_DIR/server.js
 Restart=always
 RestartSec=3
