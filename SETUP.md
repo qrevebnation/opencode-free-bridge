@@ -101,6 +101,29 @@ systemctl --user status opencode-free-bridge-tunnel opencode-free-bridge
 Catatan: host tujuan harus di jaringan dengan **IP publik berbeda**. Mesin lain di
 rumahmu yang satu router tidak menambah kuota sama sekali.
 
+**Menambah jalur lagi (hotspot HP, host SSH lain).** Tiap jalur = satu instance
+bridge dengan proxy sendiri, lalu didaftarkan sebagai connection `zen` terpisah.
+9Router otomatis round-robin dan failover antar jalur.
+
+Hotspot HP paling mudah karena tidak perlu SSH: pasang app proxy SOCKS5 di HP
+(mis. Every Proxy / SocksDroid), aktifkan, lalu:
+
+```bash
+NAME=seluler SOCKS=192.168.42.10:1080 bash scripts/add-egress-bridge.sh
+```
+
+Script itu memilih port bebas (bridge `20131`, proxy `1086`, …), memasang dua
+service systemd, memverifikasi IP egress berubah, dan mendaftarkannya ke 9Router
+sebagai connection `seluler`.
+
+```bash
+NAME=seluler bash scripts/add-egress-bridge.sh --delete   # hapus jalur
+```
+
+Yang **tidak** menolong: VPS, Cloudflare, Deno, Netlify — semuanya egress
+datacenter dan ditolak gate dengan `403`. Yang menolong hanya IP ISP/seluler
+(rumah, host-ssh, kafe, hotspot HP).
+
 ### 2. Multiple hosts (kalau punya mesin sendiri)
 
 Limit dihitung per IP, jadi menambah mesin = menambah jatah. Tiap host didaftarkan
@@ -289,6 +312,7 @@ systemctl --user status opencode-free-bridge
 | `scripts/add-bridge-connection.js` | Tambah/hapus connection tambahan (multi-host: VPS, tunnel, port lain) |
 | `scripts/fix-systemd.sh` | Tulis ulang unit systemd dengan format yang diterima + runtime Bun |
 | `scripts/setup-tunnel.sh` | Pindahkan egress lewat SSH host lain (tanpa pasang apa pun di sana) |
+| `scripts/add-egress-bridge.sh` | Tambah/hapus satu jalur egress (bridge + proxy + daftar 9Router) |
 | `scripts/connect-proxy.js` | Proxy CONNECT lokal → SOCKS5, dipakai oleh `setup-tunnel.sh` |
 | `scripts/relay-shim.js` | Rotasi + failover relay (eksperimental) |
 | `scripts/setup-relay.sh` | Pasang relay shim sebagai service |
