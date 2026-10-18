@@ -29,6 +29,10 @@ const HOST = process.env.HOST || "127.0.0.1";
 const TARGET = process.env.RELAY_TARGET || "https://opencode.ai";
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 180000);
 const COOLDOWN_MS = Number(process.env.RELAY_COOLDOWN_MS || 60000);
+// Kalau semua relay ditolak, coba jalur langsung (IP mesin ini) sebelum menyerah.
+// Berguna karena gate upstream menolak egress datacenter (relay) dengan 403,
+// sementara IP sendiri mungkin masih punya jatah.
+const FALLBACK_DIRECT = (process.env.RELAY_FALLBACK_DIRECT || "1") !== "0";
 const DEBUG_LOG = process.env.DEBUG_LOG || "";
 
 const relayUrls = (process.env.RELAY_URLS || process.env.RELAY_URL || "")
@@ -94,6 +98,7 @@ const server = http.createServer((req, res) => {
 
   function forward(bodyBuf, order, index) {
     if (index >= order.length) {
+      if (FALLBACK_DIRECT) return forwardDirect(bodyBuf);
       if (!res.headersSent) res.writeHead(502, { "content-type": "application/json" });
       return res.end(
         JSON.stringify({ error: { message: `relay shim: semua relay gagal (${order.length})` } })
@@ -148,6 +153,43 @@ const server = http.createServer((req, res) => {
       debug({ ts: new Date().toISOString(), relay: relay.hostname, error: err.message, index });
       markDown(relay, err.message);
       forward(bodyBuf, order, index + 1);
+    });
+
+    preq.end(bodyBuf);
+  }
+
+  // Jalur terakhir: kirim langsung ke upstream (tanpa relay).
+  function forwardDirect(bodyBuf) {
+    const target = new URL(TARGET);
+    const headers = { ...req.headers };
+    delete headers.host;
+    delete headers["content-length"];
+
+    debug({ ts: new Date().toISOString(), relay: "direct", event: "fallback", url: req.url });
+
+    const preq = https.request(
+      {
+        host: target.hostname,
+        port: target.port || 443,
+        path: req.url,
+        method: req.method,
+        headers,
+        timeout: TIMEOUT_MS,
+      },
+      (pres) => {
+        const out = { ...pres.headers };
+        delete out["connection"];
+        delete out["keep-alive"];
+        delete out["transfer-encoding"];
+        res.writeHead(pres.statusCode, out);
+        pres.pipe(res);
+      }
+    );
+
+    preq.on("timeout", () => preq.destroy(new Error("upstream timeout")));
+    preq.on("error", (err) => {
+      if (!res.headersSent) res.writeHead(502, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: `relay shim (direct): ${err.message}` } }));
     });
 
     preq.end(bodyBuf);
