@@ -274,6 +274,31 @@ tail -f ~/.local/state/opencode-free-bridge/relay-shim.log
 # baris "relay -> status" menunjukkan relay mana yang dipakai; 403/429 otomatis dilewati
 ```
 
+**Pengecekan berkala.** Status relay naik-turun: hari ini pernah tiga relay `403`
+sekaligus, lalu beberapa jam kemudian ketiganya `200` lagi. Untuk memantaunya tanpa
+menebak, pasang timer yang mem-probe lewat rantai sungguhan (bridge → shim → relay),
+bukan sekadar `GET /models` — endpoint itu tidak melewati gate sehingga bisa `200`
+padahal chat-nya `403`.
+
+```bash
+bash scripts/setup-relay-health.sh            # cek tiap 30 menit
+systemctl --user start opencode-free-bridge-relay-health.service   # jalankan sekarang
+tail -f ~/.local/state/opencode-free-bridge/relay-health.log       # lihat hasil
+bash scripts/setup-relay-health.sh --delete   # matikan
+```
+
+Contoh keluaran `bash scripts/check-relays.sh`:
+
+```
+RELAY                                          STATUS   ARTI
+relay-munb2b1k-...vercel.app                   200      sehat — bisa dipakai
+vercel-relay2-...vercel.app                    403      ditolak gate (IP datacenter)
+vercel-qnyoy-...vercel.app                     429      kuota IP relay habis
+```
+
+Interpretasi: `200` sehat, `403` jaringannya ditolak, `429` kuota IP itu habis.
+Kalau ada `200`, `relay-shim.js` akan memakainya lebih dulu.
+
 **Cara mematikan** dan kembali keluar dari IP mesin ini:
 
 ```bash
@@ -313,6 +338,8 @@ systemctl --user status opencode-free-bridge
 | `scripts/fix-systemd.sh` | Tulis ulang unit systemd dengan format yang diterima + runtime Bun |
 | `scripts/setup-tunnel.sh` | Pindahkan egress lewat SSH host lain (tanpa pasang apa pun di sana) |
 | `scripts/add-egress-bridge.sh` | Tambah/hapus satu jalur egress (bridge + proxy + daftar 9Router) |
+| `scripts/check-relays.sh` | Probe akurat: apakah relay masih bisa melayani chat (bukan cuma hidup) |
+| `scripts/setup-relay-health.sh` | Pasang timer pengecekan relay berkala |
 | `scripts/connect-proxy.js` | Proxy CONNECT lokal → SOCKS5, dipakai oleh `setup-tunnel.sh` |
 | `scripts/relay-shim.js` | Rotasi + failover relay (eksperimental) |
 | `scripts/setup-relay.sh` | Pasang relay shim sebagai service |
