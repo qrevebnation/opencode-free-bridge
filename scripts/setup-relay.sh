@@ -55,6 +55,7 @@ Type=simple
 Environment=PORT=$SHIM_PORT
 Environment=HOST=127.0.0.1
 Environment=RELAY_URLS=$RELAY_URLS
+Environment=RELAY_COOLDOWN_MS=${RELAY_COOLDOWN_MS:-60000}
 Environment=DEBUG_LOG=$HOME/.local/state/opencode-free-bridge/relay-shim.log
 ExecStart=$RUNTIME $SHIM_SRC
 Restart=always
@@ -91,7 +92,9 @@ EOF
 echo "Unit files ditulis di $UNIT_DIR"
 
 systemctl --user daemon-reload
-systemctl --user enable --now opencode-free-bridge-relay.service
+systemctl --user enable opencode-free-bridge-relay.service >/dev/null 2>&1 || true
+# Restart wajib: service yang sudah jalan tidak memuat unit/kode baru dengan enable --now.
+systemctl --user restart opencode-free-bridge-relay.service
 
 echo "Menunggu relay shim aktif..."
 for _ in $(seq 1 20); do
