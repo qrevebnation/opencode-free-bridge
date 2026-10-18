@@ -7,7 +7,8 @@
 # Semua langkah idempoten — aman dijalankan berulang kali.
 #
 # Opsi env:
-#   ENABLE_RELAY=1      # aktifkan rotasi relay (eksperimental, lihat SETUP.md)
+#   TUNNEL_HOST=host-ssh  # disarankan: pindahkan egress lewat jaringan host lain (SSH)
+#   ENABLE_RELAY=1      # alternatif: rotasi relay (eksperimental, lihat SETUP.md)
 #   RELAY_URLS="..."    # daftar relay; default auto-deteksi dari 9Router
 #   PORT=20129          # port bridge
 #   SHIM_PORT=20140     # port relay shim
@@ -60,27 +61,31 @@ step "2/5  Pastikan service systemd memakai runtime yang benar"
 BRIDGE_DIR="$BRIDGE_DIR" PORT="$PORT" HOST="$HOST" RUNTIME="$RUNTIME" bash "$HERE/fix-systemd.sh"
 
 # ---------------------------------------------------------------------------
-step "3/5  Rotasi relay (opsional / eksperimental)"
+step "3/5  Kuota per-IP: tunnel host lain (disarankan) atau relay"
 # ---------------------------------------------------------------------------
-if [[ -z "${ENABLE_RELAY:-}" && -z "${RELAY_URLS:-}" ]]; then
-  info "Dilewati. Bridge keluar langsung dari IP mesin ini."
-  info "Jalur stabil untuk limit per-IP adalah multi-host (lihat SETUP.md)."
-  info "Untuk mencoba relay: ENABLE_RELAY=1 bash scripts/setup-all.sh"
-else
+if [[ -n "${TUNNEL_HOST:-}" ]]; then
+  info "Memakai tunnel ke: $TUNNEL_HOST (egress dari jaringan host itu, TLS Bun tetap utuh)"
+  TUNNEL_HOST="$TUNNEL_HOST" PORT="$PORT" HOST="$HOST" BRIDGE_DIR="$BRIDGE_DIR" RUNTIME="$RUNTIME" \
+    bash "$HERE/setup-tunnel.sh"
+elif [[ -n "${ENABLE_RELAY:-}" || -n "${RELAY_URLS:-}" ]]; then
   if [[ -z "${RELAY_URLS:-}" && -f "$NINE_ROUTER_DB" ]] && command -v sqlite3 >/dev/null; then
     RELAY_URLS="$(sqlite3 "$NINE_ROUTER_DB" \
       "SELECT group_concat(json_extract(data,'\$.proxyUrl')) FROM proxyPools WHERE isActive=1 AND json_extract(data,'\$.proxyUrl') IS NOT NULL;" \
       2>/dev/null || true)"
     [[ -n "$RELAY_URLS" ]] && info "Relay terdeteksi dari 9Router: $RELAY_URLS"
   fi
-
   if [[ -n "${RELAY_URLS:-}" ]]; then
-    warn "Relay = eksperimental: gate TLS upstream bisa menolak relay tertentu (403)."
+    warn "Relay memutus TLS di sisi edge; gate upstream sering menolaknya dengan 403."
+    warn "Untuk hasil stabil pakai: TUNNEL_HOST=<host-ssh> bash scripts/setup-all.sh"
     RELAY_URLS="$RELAY_URLS" SHIM_PORT="$SHIM_PORT" PORT="$PORT" HOST="$HOST" \
       BRIDGE_DIR="$BRIDGE_DIR" RUNTIME="$RUNTIME" bash "$HERE/setup-relay.sh"
   else
     warn "Tidak ada relay ditemukan — dilewati."
   fi
+else
+  info "Dilewati. Bridge keluar langsung dari IP mesin ini."
+  info "Kuota per-IP bisa ditambah lewat tunnel ke host lain (IP publik berbeda):"
+  info "  TUNNEL_HOST=<host-ssh> bash scripts/setup-all.sh"
 fi
 
 # ---------------------------------------------------------------------------

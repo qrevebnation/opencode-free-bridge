@@ -67,9 +67,41 @@ bun ~/.opencode-free-bridge/verify.js
 ## Soal rate limit
 
 Limit free-tier OpenCode dihitung **per IP mesin yang menjalankan bridge** — bukan
-IP 9Router. Ada dua cara menyebarnya:
+IP 9Router. Upstream membedakan dua penolakan: `429 FreeUsageLimitError` berarti
+transport lolos dan tinggal kuota, sedangkan `403 FreeTierError` berarti jaringan
+itu sendiri yang ditolak (mis. egress datacenter). Urutan cara menambah kuota,
+dari yang paling praktis:
 
-### 1. Multiple hosts (disarankan — jalur stabil)
+### 1. Tunnel ke host lain (disarankan)
+
+Pindahkan egress bridge ke jaringan host lain lewat SSH — **tanpa memasang apa pun
+di host itu**. TLS bridge tetap end-to-end (Bun), jadi gate lolos; hanya IP-nya yang
+berpindah, dan kuota per-IP host itu yang dipakai.
+
+```bash
+TUNNEL_HOST=host-ssh bash scripts/setup-all.sh
+# atau hanya pasang tunnel-nya:
+TUNNEL_HOST=host-ssh bash scripts/setup-tunnel.sh
+```
+
+Alurnya:
+
+```
+bridge :20129 ──HTTPS_PROXY──▶ connect-proxy :1085 ──SOCKS5──▶ ssh -D :1080 ──▶ internet
+```
+
+Script memasang tiga service systemd: tunnel SSH, proxy CONNECT lokal, dan bridge
+dengan `HTTPS_PROXY`. Verifikasi:
+
+```bash
+curl -s -x http://127.0.0.1:1085 https://api.ipify.org   # harus IP host tujuan
+systemctl --user status opencode-free-bridge-tunnel opencode-free-bridge
+```
+
+Catatan: host tujuan harus di jaringan dengan **IP publik berbeda**. Mesin lain di
+rumahmu yang satu router tidak menambah kuota sama sekali.
+
+### 2. Multiple hosts (kalau punya mesin sendiri)
 
 Limit dihitung per IP, jadi menambah mesin = menambah jatah. Tiap host didaftarkan
 sebagai connection terpisah; 9Router otomatis round-robin + failover antar connection.
@@ -138,7 +170,13 @@ Catatan:
 - Kalau ada `priority` berbeda, 9Router memakai yang lebih rendah lebih dulu sebagai
   urutan fallback.
 
-### 2. Rotasi relay (eksperimental — satu mesin, tanpa host tambahan)
+### 3. Rotasi relay (paling rapuh — hanya menolong kadang-kadang)
+
+Relay (Vercel/Cloudflare/Deno/Netlify) **memutus TLS di sisi edge**, sehingga
+fingerprint Bun hilang dan egress-nya datang dari datacenter. Gate upstream sering
+menolaknya dengan `403 FreeTierError` — sudah terukur di sini: tiga relay sekaligus
+ditolak, sementara IP rumah hanya kena `429`. Jadi pakai ini hanya kalau opsi 1 dan 2
+tidak mungkin; kalau tetap mau, berikut caranya.
 
 `relay-shim.js` meneruskan request bridge lewat relay proxy pool 9Router, sehingga
 egress keluar dari IP relay:
@@ -250,6 +288,8 @@ systemctl --user status opencode-free-bridge
 | `scripts/add-9router-provider.js` | Daftarkan bridge ke 9Router (prefix `zen`), bersihkan proxy pool |
 | `scripts/add-bridge-connection.js` | Tambah/hapus connection tambahan (multi-host: VPS, tunnel, port lain) |
 | `scripts/fix-systemd.sh` | Tulis ulang unit systemd dengan format yang diterima + runtime Bun |
+| `scripts/setup-tunnel.sh` | Pindahkan egress lewat SSH host lain (tanpa pasang apa pun di sana) |
+| `scripts/connect-proxy.js` | Proxy CONNECT lokal → SOCKS5, dipakai oleh `setup-tunnel.sh` |
 | `scripts/relay-shim.js` | Rotasi + failover relay (eksperimental) |
 | `scripts/setup-relay.sh` | Pasang relay shim sebagai service |
 | `workers/relay.js` | Relay untuk Cloudflare Workers (deploy mandiri, tanpa 9Router) |
