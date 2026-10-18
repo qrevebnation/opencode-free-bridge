@@ -107,11 +107,19 @@ if [[ -f "$NINE_ROUTER_CLI" ]]; then
   sleep 2
   DISPLAY="${DISPLAY:-:0}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
     setsid "$NINE_ROUTER_NODE" "$NINE_ROUTER_CLI" --tray --skip-update -p 20128 >/dev/null 2>&1 &
-  sleep 3
+  for _ in $(seq 1 30); do
+    ss -ltn 2>/dev/null | grep -q ':20128 ' && break
+    sleep 1
+  done
   ss -ltn 2>/dev/null | grep -q ':20128 ' && info "9Router aktif kembali" || info "9Router belum mendengarkan :20128 — cek manual"
 else
   info "9Router CLI tidak ditemukan di $NINE_ROUTER_CLI — restart manual bila perlu."
 fi
+
+for _ in $(seq 1 30); do
+  ss -ltn 2>/dev/null | grep -q ':20128 ' && break
+  sleep 1
+done
 
 echo
 echo "Selesai. Urutan yang dipakai:"
