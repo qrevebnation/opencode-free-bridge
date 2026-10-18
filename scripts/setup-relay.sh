@@ -56,6 +56,7 @@ Environment=PORT=$SHIM_PORT
 Environment=HOST=127.0.0.1
 Environment=RELAY_URLS=$RELAY_URLS
 Environment=RELAY_COOLDOWN_MS=${RELAY_COOLDOWN_MS:-60000}
+Environment=RELAY_FALLBACK_DIRECT=${RELAY_FALLBACK_DIRECT:-1}
 Environment=DEBUG_LOG=$HOME/.local/state/opencode-free-bridge/relay-shim.log
 ExecStart=$RUNTIME $SHIM_SRC
 Restart=always
