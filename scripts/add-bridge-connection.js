@@ -24,6 +24,7 @@ function arg(name) {
 const BRIDGE_URL = arg("url") || process.env.BRIDGE_URL;
 const CONNECTION_NAME = arg("name") || process.env.CONNECTION_NAME;
 const API_KEY = process.env.API_KEY || "public";
+const PRIORITY = arg("priority") || process.env.PRIORITY;
 const DELETE = process.argv.includes("--delete");
 
 function loadClient() {
@@ -79,7 +80,7 @@ async function main() {
   if (!created?.success) throw new Error(`Gagal membuat connection: ${created?.error || JSON.stringify(created)}`);
 
   const conn = created.data.connection;
-  const updated = await api.updateConnection(conn.id, {
+  const patch = {
     providerSpecificData: {
       prefix: PREFIX,
       apiType: "chat",
@@ -90,10 +91,16 @@ async function main() {
       connectionNoProxy: "",
       proxyPoolId: null,
     },
-  });
+  };
+  // priority kecil = didahulukan (9Router mengurutkan ascending)
+  if (PRIORITY) patch.priority = Number(PRIORITY);
+
+  const updated = await api.updateConnection(conn.id, patch);
   if (!updated?.success) throw new Error(`Gagal set baseUrl: ${updated?.error || JSON.stringify(updated)}`);
 
-  console.log(`Connection dibuat: ${CONNECTION_NAME} (${conn.id}) -> ${BRIDGE_URL}`);
+  console.log(
+    `Connection dibuat: ${CONNECTION_NAME} (${conn.id}) -> ${BRIDGE_URL}${PRIORITY ? ` | priority ${PRIORITY}` : ""}`
+  );
 
   const providers = await api.getProviders();
   const mine = (providers?.data?.connections || []).filter((c) => c.provider === node.id);
