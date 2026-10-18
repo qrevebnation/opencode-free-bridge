@@ -154,8 +154,46 @@ ENABLE_RELAY=1 bash scripts/setup-all.sh
 ```
 
 **Cara menambah relay** supaya rotasinya makin lebar: buka 9Router → **Proxy Pools**
-→ deploy pool baru (Vercel/Cloudflare/Deno). Setiap deploy menghasilkan satu URL relay.
-Lihat daftarnya:
+→ deploy pool baru. Setiap deploy menghasilkan satu URL relay.
+
+Pilihan platform di 9Router (semuanya memakai kontrak yang sama — forwarder
+`x-relay-target` / `x-relay-path`):
+
+| Platform | Yang dibutuhkan | Catatan |
+| --- | --- | --- |
+| **Vercel** | token Vercel | Sering minta verifikasi nomor telepon saat daftar |
+| **Cloudflare** | Account ID + API Token | Akun CF cukup email, tanpa nomor telepon. Workers gratis 100k request/hari |
+| **Deno Deploy** | token Deno | Login via GitHub |
+| **Netlify** | token Netlify | — |
+
+**Deploy relay Cloudflare tanpa lewat 9Router** (mis. kalau UI-nya rewel):
+
+```bash
+cd workers
+npx wrangler login     # sekali saja
+npx wrangler deploy    # menghasilkan https://opencode-relay.<subdomain>.workers.dev
+```
+
+Lalu daftarkan URL itu ke rotasi:
+
+```bash
+RELAY_URLS="https://opencode-relay.<subdomain>.workers.dev,https://relay-lain.vercel.app" \
+  bash scripts/setup-relay.sh
+```
+
+Untuk beberapa IP, ubah `name` di `workers/wrangler.toml` (mis. `opencode-relay-2`)
+dan deploy lagi — tiap Worker menghasilkan endpoint sendiri.
+
+Catatan: relay Cloudflare/edge memakai IP yang dibagi banyak pengguna, jadi kalau
+opencode menolak IP itu, shim akan menandainya cooldown lalu pindah ke relay lain.
+Uji dulu satu relay sebelum dipakai massal:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "https://relay-baru.workers.dev/" \
+  -H "x-relay-target: https://opencode.ai" -H "x-relay-path: /inference/v1/models"
+```
+
+Lihat daftar relay 9Router:
 
 ```bash
 sqlite3 ~/.9router/db/data.sqlite \
@@ -214,6 +252,7 @@ systemctl --user status opencode-free-bridge
 | `scripts/fix-systemd.sh` | Tulis ulang unit systemd dengan format yang diterima + runtime Bun |
 | `scripts/relay-shim.js` | Rotasi + failover relay (eksperimental) |
 | `scripts/setup-relay.sh` | Pasang relay shim sebagai service |
+| `workers/relay.js` | Relay untuk Cloudflare Workers (deploy mandiri, tanpa 9Router) |
 | `DETAIL.md` | Penjelasan teknis, cara kerja, troubleshooting |
 
 ## Lisensi
