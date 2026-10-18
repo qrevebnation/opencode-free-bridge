@@ -26,6 +26,9 @@ NAME="${NAME:-}"
 BRIDGE_DIR="${BRIDGE_DIR:-$HOME/.opencode-free-bridge}"
 BRIDGE_HOST="127.0.0.1"
 SOCKS="${SOCKS:-}"
+PROXY_URL="${PROXY_URL:-}"   # pakai proxy yang sudah ada (mis. http://127.0.0.1:1085)
+SHIM_PORT="${SHIM_PORT:-}"   # rute lewat relay shim (relay 9Router)
+PRIORITY="${PRIORITY:-}"     # priority connection di 9Router (angka kecil = didahulukan)
 BRIDGE_ONLY="${BRIDGE_ONLY:-}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 NINE_ROUTER_DB="${NINE_ROUTER_DB:-$HOME/.9router/db/data.sqlite}"
@@ -59,8 +62,8 @@ if [[ -n "$DELETE" ]]; then
 fi
 
 [[ -f "$BRIDGE_DIR/server.js" ]] || { echo "server.js tidak ditemukan di $BRIDGE_DIR" >&2; exit 1; }
-if [[ -z "$SOCKS" && -z "$BRIDGE_ONLY" ]]; then
-  echo "Set SOCKS=host:port, atau BRIDGE_ONLY=1 untuk jalur langsung." >&2
+if [[ -z "$SOCKS" && -z "$PROXY_URL" && -z "$SHIM_PORT" && -z "$BRIDGE_ONLY" ]]; then
+  echo "Pilih salah satu: SOCKS=host:port | PROXY_URL=http://... | SHIM_PORT=20140 | BRIDGE_ONLY=1" >&2
   exit 1
 fi
 
@@ -92,6 +95,7 @@ EOF
   systemctl --user daemon-reload
   systemctl --user enable "$PROXY_UNIT" >/dev/null 2>&1 || true
   systemctl --user restart "$PROXY_UNIT"
+  PROXY_URL="http://127.0.0.1:$PROXY_PORT"
 fi
 
 BRIDGE_PORT="${BRIDGE_PORT:-$(next_free_port 20131)}"
@@ -108,7 +112,13 @@ BRIDGE_PORT="${BRIDGE_PORT:-$(next_free_port 20131)}"
   echo "WorkingDirectory=$BRIDGE_DIR"
   echo "Environment=PORT=$BRIDGE_PORT"
   echo "Environment=HOST=$BRIDGE_HOST"
-  [[ -n "$PROXY_PORT" ]] && echo "Environment=HTTPS_PROXY=http://127.0.0.1:$PROXY_PORT"
+  if [[ -n "$SHIM_PORT" ]]; then
+    echo "Environment=OPENCODE_CHAT_URL=http://127.0.0.1:$SHIM_PORT/inference/v1/chat/completions"
+    echo "Environment=OPENCODE_RESPONSES_URL=http://127.0.0.1:$SHIM_PORT/inference/v1/responses"
+    echo "Environment=OPENCODE_MODELS_URL=http://127.0.0.1:$SHIM_PORT/inference/v1/models"
+  elif [[ -n "$PROXY_URL" ]]; then
+    echo "Environment=HTTPS_PROXY=$PROXY_URL"
+  fi
   echo "ExecStart=$RUNTIME $BRIDGE_DIR/server.js"
   echo "Restart=always"
   echo "RestartSec=3"
@@ -122,22 +132,20 @@ systemctl --user daemon-reload
 systemctl --user enable "$BRIDGE_UNIT" >/dev/null 2>&1 || true
 systemctl --user restart "$BRIDGE_UNIT"
 
-echo "Jalur '$NAME': bridge :$BRIDGE_PORT${PROXY_PORT:+, proxy :$PROXY_PORT}"
+echo "Jalur '$NAME': bridge :$BRIDGE_PORT${PROXY_URL:+, proxy $PROXY_URL}${SHIM_PORT:+, via shim :$SHIM_PORT}"
 
 # ------------------------------------------------------------- verifikasi ---
 IP_HOME="$(curl -s --max-time 8 https://api.ipify.org || echo '?')"
-if [[ -n "$PROXY_PORT" ]]; then
+if [[ -n "$PROXY_URL" ]]; then
   for _ in $(seq 1 15); do
-    curl -s -o /dev/null --max-time 3 -x "http://127.0.0.1:$PROXY_PORT" https://api.ipify.org && break
+    curl -s -o /dev/null --max-time 3 -x "$PROXY_URL" https://api.ipify.org && break
     sleep 1
   done
-  IP_JALUR="$(curl -s --max-time 8 -x "http://127.0.0.1:$PROXY_PORT" https://api.ipify.org || echo '?')"
-else
-  IP_JALUR="$IP_HOME"
+  IP_JALUR="$(curl -s --max-time 8 -x "$PROXY_URL" https://api.ipify.org || echo '?')"
+  echo "  IP langsung : $IP_HOME"
+  echo "  IP jalur    : $IP_JALUR"
+  [[ "$IP_JALUR" == "$IP_HOME" ]] && echo "  PERINGATAN: IP tidak berubah — cek proxy/host jalur ini." || true
 fi
-echo "  IP langsung : $IP_HOME"
-echo "  IP jalur    : $IP_JALUR"
-[[ "$IP_JALUR" == "$IP_HOME" && -n "$PROXY_PORT" ]] && echo "  PERINGATAN: IP tidak berubah — cek proxy di HP/host itu." || true
 
 for _ in $(seq 1 20); do
   curl -s -o /dev/null --max-time 3 "http://$BRIDGE_HOST:$BRIDGE_PORT/health" && break
@@ -148,7 +156,8 @@ echo "  Model terdeteksi: $MODELS"
 
 # ----------------------------------------------------------- daftar 9Router ---
 if [[ -z "${SKIP_9ROUTER:-}" && -f "$NINE_ROUTER_DB" ]]; then
-  "$RUNTIME" "$HERE/add-bridge-connection.js" --url "http://127.0.0.1:$BRIDGE_PORT/v1" --name "$NAME" || \
+  "$RUNTIME" "$HERE/add-bridge-connection.js" --url "http://127.0.0.1:$BRIDGE_PORT/v1" --name "$NAME" \
+    ${PRIORITY:+--priority "$PRIORITY"} || \
     echo "  (registrasi 9Router gagal — jalankan manual: node scripts/add-bridge-connection.js --url http://127.0.0.1:$BRIDGE_PORT/v1 --name $NAME)"
 fi
 

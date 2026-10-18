@@ -69,8 +69,37 @@ bun ~/.opencode-free-bridge/verify.js
 Limit free-tier OpenCode dihitung **per IP mesin yang menjalankan bridge** — bukan
 IP 9Router. Upstream membedakan dua penolakan: `429 FreeUsageLimitError` berarti
 transport lolos dan tinggal kuota, sedangkan `403 FreeTierError` berarti jaringan
-itu sendiri yang ditolak (mis. egress datacenter). Urutan cara menambah kuota,
-dari yang paling praktis:
+itu sendiri yang ditolak (mis. egress datacenter).
+
+### Rantai bertingkat otomatis (IP sendiri -> SSH -> relay)
+
+Kalau ingin semuanya jalan sendiri tanpa memilih manual:
+
+```bash
+TUNNEL_HOST=host-ssh bash scripts/setup-chain.sh
+```
+
+| Tingkat | Egress | Bridge | Connection |
+| --- | --- | --- | --- |
+| 1 | IP sendiri (langsung) | `:20129` | `bridge-local` (priority 1) |
+| 2 | SSH ke `host-ssh` (alias SSH di `~/.ssh/config`) | `:20131` | `ssh` (priority 2) |
+| 3 | relay 9Router | `:20133` | `relay` (priority 3) |
+
+9Router memakai strategi **`fill-first`**: pakai tingkat berprioritas terkecil
+selama bisa; begitu upstream membalas `429`/`403`, connection itu dikunci
+sementara dan request berikutnya otomatis pindah ke tingkat berikutnya.
+
+```bash
+node scripts/set-chain-strategy.js show    # urutan + priority
+sqlite3 ~/.9router/db/data.sqlite \
+  "SELECT timestamp, model, connectionId FROM usageHistory ORDER BY id DESC LIMIT 3;"
+```
+
+Bongkar tingkat 2 & 3 (bridge utama tetap ada): `bash scripts/setup-chain.sh --delete`
+
+### Cara individual
+
+Kalau tidak mau rantai otomatis, tiap jalur bisa dipasang sendiri:
 
 ### 1. Tunnel ke host lain (disarankan)
 
@@ -122,7 +151,7 @@ NAME=seluler bash scripts/add-egress-bridge.sh --delete   # hapus jalur
 
 Yang **tidak** menolong: VPS, Cloudflare, Deno, Netlify — semuanya egress
 datacenter dan ditolak gate dengan `403`. Yang menolong hanya IP ISP/seluler
-(rumah, host-ssh, kafe, hotspot HP).
+(rumah, ISP lain, kafe, hotspot HP).
 
 ### 2. Multiple hosts (kalau punya mesin sendiri)
 
@@ -338,6 +367,8 @@ systemctl --user status opencode-free-bridge
 | `scripts/fix-systemd.sh` | Tulis ulang unit systemd dengan format yang diterima + runtime Bun |
 | `scripts/setup-tunnel.sh` | Pindahkan egress lewat SSH host lain (tanpa pasang apa pun di sana) |
 | `scripts/add-egress-bridge.sh` | Tambah/hapus satu jalur egress (bridge + proxy + daftar 9Router) |
+| `scripts/setup-chain.sh` | Rantai otomatis: IP sendiri -> SSH -> relay (prioritas + failover) |
+| `scripts/set-chain-strategy.js` | Setel priority tingkat 1 dan strategi `fill-first` 9Router |
 | `scripts/check-relays.sh` | Probe akurat: apakah relay masih bisa melayani chat (bukan cuma hidup) |
 | `scripts/setup-relay-health.sh` | Pasang timer pengecekan relay berkala |
 | `scripts/connect-proxy.js` | Proxy CONNECT lokal → SOCKS5, dipakai oleh `setup-tunnel.sh` |
