@@ -71,25 +71,74 @@ IP 9Router. Ada dua cara menyebarnya:
 
 ### 1. Multiple hosts (disarankan — jalur stabil)
 
-Jalankan bridge di beberapa mesin dengan IP publik berbeda, daftarkan masing-masing
-sebagai connection terpisah di 9Router (prefix sama, `zen`). 9Router otomatis
-round-robin dan failover antar connection.
+Limit dihitung per IP, jadi menambah mesin = menambah jatah. Tiap host didaftarkan
+sebagai connection terpisah; 9Router otomatis round-robin + failover antar connection.
+
+**Di mesin kedua** (VPS/host dengan IP publik berbeda):
 
 ```bash
-# di mesin lain
-git clone https://github.com/qrevebnation/opencode-free-bridge.git
-cd opencode-free-bridge && bash scripts/setup-all.sh
+curl -fsSL https://raw.githubusercontent.com/qrevebnation/opencode-free-bridge/main/install.sh | bash
+```
 
-# dari laptop, buka port bridge mesin itu
+Installer memasang Bun + bridge. Kalau mau sekaligus registrasi 9Router di host itu,
+clone repo ini dan jalankan `bash scripts/setup-all.sh` (lewati kalau 9Router tidak
+ada di sana).
+
+**Di mesin utama**, buka port bridge host kedua lewat SSH:
+
+```bash
 ssh -N -L 127.0.0.1:20130:127.0.0.1:20129 user@remote-host
 ```
 
-Lalu daftarkan `http://127.0.0.1:20130/v1` sebagai connection tambahan di UI 9Router.
+Biarkan perintah itu jalan. Supaya otomatis, jadikan service systemd (ganti
+`user@remote-host`):
 
-Catatan: host harus di **jaringan/IP publik berbeda**. Dua mesin di rumah yang sama
-berbagi IP → tidak ada gunanya.
+```ini
+# ~/.config/systemd/user/bridge-tunnel-vps1.service
+[Unit]
+Description=SSH tunnel ke bridge VPS-1
+After=network-online.target
 
-### 2. Rotasi relay (eksperimental — satu mesin)
+[Service]
+ExecStart=/usr/bin/ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:20130:127.0.0.1:20129 user@remote-host
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload && systemctl --user enable --now bridge-tunnel-vps1
+```
+
+**Daftarkan sebagai connection tambahan** di 9Router:
+
+```bash
+node scripts/add-bridge-connection.js --url http://127.0.0.1:20130/v1 --name vps-1
+```
+
+Script ini mencari provider node ber-prefix `zen` (jalankan `setup-all.sh` dulu kalau
+belum ada), membuat connection baru, mengarahkan `baseUrl` ke tunnel, dan memastikan
+proxy pool kosong. Ulangi untuk host lain (`--name vps-2`, port `20131`, …).
+
+Cek dan bersihkan:
+
+```bash
+node scripts/add-bridge-connection.js --url http://127.0.0.1:20130/v1 --name vps-1   # cek daftar
+node scripts/add-bridge-connection.js --name vps-1 --delete                          # hapus
+```
+
+Catatan:
+- Host harus di **jaringan/IP publik berbeda**. Dua mesin di rumah yang sama berbagi
+  IP → tidak ada gunanya.
+- Semua connection memakai prefix `zen`, jadi model tetap `zen/<id>` — tidak perlu
+  ubah konfigurasi klien.
+- Restart 9Router kalau connection baru belum terbaca.
+- Kalau ada `priority` berbeda, 9Router memakai yang lebih rendah lebih dulu sebagai
+  urutan fallback.
+
+### 2. Rotasi relay (eksperimental — satu mesin, tanpa host tambahan)
 
 `relay-shim.js` meneruskan request bridge lewat relay proxy pool 9Router, sehingga
 egress keluar dari IP relay:
@@ -98,17 +147,46 @@ egress keluar dari IP relay:
 bridge :20129 ──▶ relay-shim :20140 ──▶ relay (Vercel) ──▶ opencode.ai
 ```
 
+**Cara mengaktifkan** (otomatis mendeteksi relay dari 9Router):
+
 ```bash
 ENABLE_RELAY=1 bash scripts/setup-all.sh
-# atau pilih relay sendiri:
+```
+
+**Cara menambah relay** supaya rotasinya makin lebar: buka 9Router → **Proxy Pools**
+→ deploy pool baru (Vercel/Cloudflare/Deno). Setiap deploy menghasilkan satu URL relay.
+Lihat daftarnya:
+
+```bash
+sqlite3 ~/.9router/db/data.sqlite \
+  "SELECT json_extract(data,'\$.name'), json_extract(data,'\$.proxyUrl') FROM proxyPools WHERE isActive=1;"
+```
+
+**Cara memilih relay tertentu** (mis. hanya yang terbukti jalan):
+
+```bash
 RELAY_URLS="https://relay-a.vercel.app,https://relay-b.vercel.app" bash scripts/setup-relay.sh
 ```
 
-Kenapa eksperimental: gate upstream memeriksa TLS `ClientHello`, sedangkan relay
-Vercel/edge tidak menjalankan Bun, sehingga sebagian relay ditolak
-`403 FreeTierError`. Rotasi + failover menyembunyikan itu (relay yang ditolak
-otomatis dilewati), tapi hasil akhirnya bergantung pada relay mana yang lolos.
-Jalur multi-host di atas tidak punya masalah ini.
+**Cara memantau** rotasi/failover:
+
+```bash
+tail -f ~/.local/state/opencode-free-bridge/relay-shim.log
+# baris "relay -> status" menunjukkan relay mana yang dipakai; 403/429 otomatis dilewati
+```
+
+**Cara mematikan** dan kembali keluar dari IP mesin ini:
+
+```bash
+systemctl --user disable --now opencode-free-bridge-relay
+bash scripts/fix-systemd.sh
+```
+
+Kenapa eksperimental: relay hanya mengubah **IP egress**. Kalau IP relay itu sendiri
+sedang kehabisan jatah, dia membalas `403 FreeTierError`/`429` dan request dilempar ke
+relay berikutnya — jadi hasilnya bergantung pada berapa relay sehat yang kamu punya.
+Limit **per model** (mis. satu model tertentu di-throttle) tidak terpengaruh rotasi
+sama sekali.
 
 ## Kalau bermasalah
 
@@ -132,6 +210,7 @@ systemctl --user status opencode-free-bridge
 | ---- | ------ |
 | `scripts/setup-all.sh` | **Mulai dari sini** — setup idempoten sekali jalan |
 | `scripts/add-9router-provider.js` | Daftarkan bridge ke 9Router (prefix `zen`), bersihkan proxy pool |
+| `scripts/add-bridge-connection.js` | Tambah/hapus connection tambahan (multi-host: VPS, tunnel, port lain) |
 | `scripts/fix-systemd.sh` | Tulis ulang unit systemd dengan format yang diterima + runtime Bun |
 | `scripts/relay-shim.js` | Rotasi + failover relay (eksperimental) |
 | `scripts/setup-relay.sh` | Pasang relay shim sebagai service |
