@@ -341,6 +341,43 @@ relay berikutnya — jadi hasilnya bergantung pada berapa relay sehat yang kamu 
 Limit **per model** (mis. satu model tertentu di-throttle) tidak terpengaruh rotasi
 sama sekali.
 
+## Update versi bridge
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/azrinaldi/opencode-free-bridge/main/install.sh | bash
+```
+
+Installer menyimpan backup (`~/.opencode-free-bridge/.backup-vX-...`), mengganti file,
+menulis ulang unit systemd, lalu menjalankan self-check.
+
+**Penting untuk setup rantai:** semua instance bridge membaca `server.js` dari
+direktori yang sama, jadi setelah upgrade **restart juga unit tingkat lain** —
+kalau tidak, mereka masih menjalankan kode lama di memori:
+
+```bash
+systemctl --user restart opencode-free-bridge-egress-ssh opencode-free-bridge-egress-relay
+for p in 20129 20131 20133; do curl -s http://127.0.0.1:$p/health | grep -o '"version":"[^"]*"'; done
+```
+
+### Sinyal throttle dari bridge (upstream 2.0.0+)
+
+Saat upstream menolak dengan `FreeTierError` (403 gate), bridge menambahkan:
+
+```
+Retry-After: <detik>
+X-OpenCode-Gate: ip-throttled
+```
+
+`/health` juga memuat `throttledUntil`. Untuk membuat 9Router memperlakukannya
+sebagai rate-limit (backoff, bukan penolakan permanen), set env di unit bridge:
+
+```ini
+Environment=IP_LIMIT_STATUS=429
+```
+
+Catatan: ini berlaku untuk penolakan gate (`403`). Kalau kuota IP memang habis,
+upstream sudah mengirim `429` dan bridge meneruskannya apa adanya.
+
 ## Kalau bermasalah
 
 ```bash
