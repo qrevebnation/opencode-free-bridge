@@ -71,25 +71,38 @@ setelah mengubahnya.
 
 ## 4. Rate limit: di mana sebarnya
 
-Limit dihitung per IP **mesin yang menjalankan bridge**, bukan IP 9Router. Karena itu:
+Limit dihitung per IP **mesin yang menjalankan bridge**, bukan IP 9Router.
 
-- **Multiple hosts** (rekomendasi upstream, jalur stabil): beberapa mesin dengan
-  IP publik berbeda, masing-masing satu connection `zen` di 9Router.
-- **Rotasi relay** (eksperimental): satu mesin, egress dipindah ke relay.
+Upstream membedakan dua penolakan, dan bedanya penting:
 
-Relay menjadi rapuh justru karena gate TLS di bagian 1: relay edge tidak
-menjalankan Bun, sehingga fingerprint-nya tidak cocok. Ini terukur:
+| Respons | Arti |
+| --- | --- |
+| `429 FreeUsageLimitError` | Transport lolos, tinggal kuota IP itu yang habis |
+| `403 FreeTierError` | Jaringan/transportnya sendiri yang ditolak |
+
+Terukur di mesin ini, satu waktu:
 
 ```
-POST payload & header identik ke relay yang sama-sama Vercel:
-  relay-munb2b1k  -> 403 FreeTierError
-  vercel-relay2   -> 200 OK
-  kirim langsung  -> 200 OK
+IP rumah langsung : 429 FreeUsageLimitError   -> transport lolos, kuota habis
+tiga relay (Vercel): 403 FreeTierError        -> jaringannya yang ditolak
+GET /inference/v1/models lewat relay: 200     -> relay-nya sehat; yang ditolak khusus request gated
 ```
 
-Rotasi + failover `relay-shim.js` menyembunyikan masalah itu (relay yang ditolak
-dilewati), tapi bukan solusi yang dijamin. Relay hanya mengubah IP egress; limit
-**per model** (mis. `glm-5.3` dahulu `BUSY`) tidak terpengaruh.
+Karena itu urutan solusinya:
+
+1. **Tunnel ke host lain** (paling praktis). `ssh -D` + `connect-proxy.js` +
+   `HTTPS_PROXY` hanya memindahkan IP; TLS tetap dihasilkan Bun, jadi transport
+   tetap lolos dan kuota IP host tujuan yang terpakai. Tidak perlu memasang apa pun
+   di host tujuan, dan IP-nya bukan datacenter.
+2. **Multiple hosts** — beberapa mesin dengan IP publik berbeda, tiap mesin satu
+   connection `zen` di 9Router.
+3. **Rotasi relay** — paling rapuh: relay memutus TLS di edge (Vercel/Cloudflare/
+   Deno/Netlify semuanya datacenter), sehingga `403` sering muncul. Shim hanya
+   menyembunyikannya lewat cooldown + failover.
+
+Catatan penting: relay/edge dan tunnel sama-sama hanya mengubah **IP egress**. Limit
+**per model** (mis. satu model tertentu sedang jenuh) tidak terpengaruh oleh
+keduanya.
 
 ## 5. Verifikasi
 
