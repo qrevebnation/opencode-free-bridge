@@ -1,0 +1,6 @@
+name = "opencode-relay"
+main = "relay.js"
+compatibility_date = "2026-10-01"
+
+# Deploy: npx wrangler deploy
+# Hasil: https://opencode-relay.<subdomain>.workers.dev
