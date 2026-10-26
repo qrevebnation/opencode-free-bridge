@@ -1,3 +1,10 @@
+> **Catatan versi:** dokumen ini ditulis saat fork masih di upstream 2.0.0.
+> Sejak **2.3.x** sebagian solusi di bawah sudah ada native di bridge:
+> egress pool (satu proses, banyak IP, health per entry), `tunnel-doctor.sh`,
+> serta fix blok `<env>` penyebab `429` yang menyerupai kuota habis.
+> Lihat [SETUP.md](./SETUP.md) untuk alur terkini; bagian di bawah tetap berguna
+> sebagai catatan pengukuran dan alasan di baliknya.
+
 # Detail teknis
 
 Catatan mendalam untuk fork ini. Untuk pemasangan cepat, lihat [SETUP.md](./SETUP.md);
