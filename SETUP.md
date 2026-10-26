@@ -63,9 +63,27 @@ direct
 **Cara 2 — environment** (lebih cocok untuk service/systemd):
 
 ```ini
-Environment=UPSTREAM_PROXY_POOL=med1=http://a:1,med2=http://b:2,direct
+# `direct` TIDAK bisa ditulis sebagai string biasa — string dianggap URL dan
+# akan diabaikan diam-diam. Untuk ikut memutar IP mesin ini, pakai proxy.json:
+Environment=UPSTREAM_PROXY_POOL=med1=http://a:1,med2=http://b:2
 Environment=UPSTREAM_PROXY_STRATEGY=failover
 ```
+
+Atau tulis langsung `~/.opencode-free-bridge/proxy.json` (mode 0600) — ini yang
+dipakai panel, dan satu-satunya cara mendaftarkan entry `direct`:
+
+```json
+{
+  "pool": [
+    { "id": "direct", "label": "direct", "direct": true, "enabled": true, "weight": 1 },
+    { "id": "ssh", "label": "ssh", "url": "http://127.0.0.1:1085", "enabled": true, "weight": 1 }
+  ],
+  "strategy": "failover"
+}
+```
+
+Catatan: kalau `UPSTREAM_PROXY_POOL` diset di environment, edit lewat panel/JSON
+akan ditolak (`refuseWhenLocked`) — pilih salah satu, jangan dua-duanya.
 
 - **Bentuk entry:** URL, atau `{id,label,url,weight,enabled}`, atau `direct`
   (IP mesin ini ikut berputar, bukan cuma cadangan).
